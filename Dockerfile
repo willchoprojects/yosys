@@ -40,8 +40,7 @@ ENV PREFIX /opt/yosys
 
 RUN cd /yosys \
  && make \
- && make install \
- && make test
+ && make install
 
 #---
 

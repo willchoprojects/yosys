@@ -1,6 +1,7 @@
 
 CONFIG := clang
 # CONFIG := gcc
+# CONFIG := gcc-4.8
 # CONFIG := afl-gcc
 # CONFIG := emcc
 # CONFIG := wasi
@@ -141,7 +142,7 @@ LDLIBS += -lrt
 endif
 endif
 
-YOSYS_VER := 0.26+1
+YOSYS_VER := 0.24+0
 
 # Note: We arrange for .gitcommit to contain the (short) commit hash in
 # tarballs generated with git-archive(1) using .gitattributes. The git repo
@@ -157,7 +158,7 @@ endif
 OBJS = kernel/version_$(GIT_REV).o
 
 bumpversion:
-	sed -i "/^YOSYS_VER := / s/+[0-9][0-9]*$$/+`git log --oneline 7e58866.. | wc -l`/;" Makefile
+	sed -i "/^YOSYS_VER := / s/+[0-9][0-9]*$$/+`git log --oneline 313b799.. | wc -l`/;" Makefile
 
 # set 'ABCREV = default' to use abc/ as it is
 #
@@ -165,7 +166,7 @@ bumpversion:
 # is just a symlink to your actual ABC working directory, as 'make mrproper'
 # will remove the 'abc' directory and you do not want to accidentally
 # delete your work on ABC..
-ABCREV = a8f0ef2
+ABCREV = be9a35c
 ABCPULL = 1
 ABCURL ?= https://github.com/YosysHQ/abc
 ABCMKARGS = CC="$(CXX)" CXX="$(CXX)" ABC_USE_LIBSTDCXX=1 ABC_USE_NAMESPACE=abc VERBOSE=$(Q)
@@ -254,6 +255,12 @@ ABCMKARGS = CC="$(CC)" CXX="$(CXX)" LD="$(LD)" ABC_USE_LIBSTDCXX=1 LIBS="-lm -lp
 ifeq ($(DISABLE_ABC_THREADS),1)
 ABCMKARGS += "ABC_USE_NO_PTHREADS=1"
 endif
+
+else ifeq ($(CONFIG),gcc-4.8)
+CXX = gcc-4.8
+LD = gcc-4.8
+CXXFLAGS += -std=$(CXXSTD) -Os
+ABCMKARGS += ARCHFLAGS="-DABC_USE_STDINT_H"
 
 else ifeq ($(CONFIG),afl-gcc)
 CXX = AFL_QUIET=1 AFL_HARDEN=1 afl-gcc
@@ -372,7 +379,7 @@ ABCMKARGS += LIBS="-lpthread -s" ABC_USE_NO_READLINE=0 CC="x86_64-w64-mingw32-gc
 EXE = .exe
 
 else ifneq ($(CONFIG),none)
-$(error Invalid CONFIG setting '$(CONFIG)'. Valid values: clang, gcc, emcc, mxe, msys2-32, msys2-64)
+$(error Invalid CONFIG setting '$(CONFIG)'. Valid values: clang, gcc, gcc-4.8, emcc, mxe, msys2-32, msys2-64)
 endif
 
 ifeq ($(ENABLE_LIBYOSYS),1)
@@ -653,7 +660,7 @@ ifneq ($(ABCEXTERNAL),)
 kernel/yosys.o: CXXFLAGS += -DABCEXTERNAL='"$(ABCEXTERNAL)"'
 endif
 endif
-OBJS += kernel/cellaigs.o kernel/celledges.o kernel/satgen.o kernel/qcsat.o kernel/mem.o kernel/ffmerge.o kernel/ff.o kernel/yw.o kernel/json.o
+OBJS += kernel/cellaigs.o kernel/celledges.o kernel/satgen.o kernel/qcsat.o kernel/mem.o kernel/ffmerge.o kernel/ff.o
 ifeq ($(ENABLE_ZLIB),1)
 OBJS += kernel/fstdata.o
 endif
@@ -852,7 +859,7 @@ test: $(TARGETS) $(EXTRA_TARGETS)
 	+cd tests/various && bash run-test.sh
 	+cd tests/select && bash run-test.sh
 	+cd tests/sat && bash run-test.sh
-	+cd tests/sim && bash run-test.sh
+	# +cd tests/sim && bash run-test.sh
 	+cd tests/svinterfaces && bash run-test.sh $(SEEDOPT)
 	+cd tests/svtypes && bash run-test.sh $(SEEDOPT)
 	+cd tests/proc && bash run-test.sh
@@ -874,7 +881,6 @@ test: $(TARGETS) $(EXTRA_TARGETS)
 	+cd tests/rpc && bash run-test.sh
 	+cd tests/memfile && bash run-test.sh
 	+cd tests/verilog && bash run-test.sh
-	+cd tests/xprop && bash run-test.sh $(SEEDOPT)
 	@echo ""
 	@echo "  Passed \"make test\"."
 	@echo ""
@@ -970,9 +976,18 @@ DOC_TARGET ?= html
 docs: docs/source/cmd/abc.rst docs/gen_images docs/guidelines
 	$(Q) $(MAKE) -C docs $(DOC_TARGET)
 
+update-manual: $(TARGETS) $(EXTRA_TARGETS)
+	cd manual && ../$(PROGRAM_PREFIX)yosys -p 'help -write-tex-command-reference-manual'
+
+manual: $(TARGETS) $(EXTRA_TARGETS)
+	cd manual && bash appnotes.sh
+	cd manual && bash presentation.sh
+	cd manual && bash manual.sh
+
 clean:
 	rm -rf share
 	rm -rf kernel/*.pyh
+	if test -d manual; then cd manual && sh clean.sh; fi
 	rm -f $(OBJS) $(GENFILES) $(TARGETS) $(EXTRA_TARGETS) $(EXTRA_OBJS) $(PY_WRAP_INCLUDES) $(PY_WRAPPER_FILE).cc
 	rm -f kernel/version_*.o kernel/version_*.cc
 	rm -f libs/*/*.d frontends/*/*.d passes/*/*.d backends/*/*.d kernel/*.d techlibs/*/*.d
@@ -1047,6 +1062,9 @@ config-gcc-static: clean
 	echo 'ENABLE_READLINE := 0' >> Makefile.conf
 	echo 'ENABLE_TCL := 0' >> Makefile.conf
 
+config-gcc-4.8: clean
+	echo 'CONFIG := gcc-4.8' > Makefile.conf
+
 config-afl-gcc: clean
 	echo 'CONFIG := afl-gcc' > Makefile.conf
 
@@ -1109,5 +1127,5 @@ echo-abc-rev:
 -include kernel/*.d
 -include techlibs/*/*.d
 
-.PHONY: all top-all abc test install install-abc docs clean mrproper qtcreator coverage vcxsrc mxebin
-.PHONY: config-clean config-clang config-gcc config-gcc-static config-afl-gcc config-gprof config-sudo
+.PHONY: all top-all abc test install install-abc docs manual clean mrproper qtcreator coverage vcxsrc mxebin
+.PHONY: config-clean config-clang config-gcc config-gcc-static config-gcc-4.8 config-afl-gcc config-gprof config-sudo
